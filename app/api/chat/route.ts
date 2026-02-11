@@ -1,41 +1,37 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
-
 export async function POST(req: Request) {
   try {
     const { prompt } = await req.json();
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-    // Defining the Board of Directors
-    const boardRoles = [
-      { name: "CMO (Marketing)", focus: "Virality, user acquisition, and branding." },
-      { name: "CPO (Product)", focus: "Feature roadmap, user experience, and tech stack." },
-      { name: "CFO (Finance)", focus: "Revenue models, pricing, and 12-month runway." }
+    const roles = [
+      { id: "cmo", name: "Marketing Director", prompt: "Focus on viral growth and customer acquisition." },
+      { id: "cpo", name: "Product Director", prompt: "Focus on MVP features and user experience." },
+      { id: "cfo", name: "Financial Director", prompt: "Focus on pricing strategy and revenue." }
     ];
 
-    // Running the meeting (All agents think at once)
-    const boardResponses = await Promise.all(
-      boardRoles.map(async (role) => {
-        const result = await model.generateContent(
-          `You are the ${role.name}. Focus: ${role.focus}. Analyze this idea: ${prompt}`
-        );
-        return { role: role.name, feedback: result.response.text() };
+    // Parallel execution for speed
+    const boardResults = await Promise.all(
+      roles.map(async (role) => {
+        const res = await model.generateContent(`Role: ${role.name}. ${role.prompt} Analyze: ${prompt}`);
+        return { name: role.name, text: res.response.text() };
       })
     );
 
-    // The Architect summarizes it all
-    const architectResult = await model.generateContent(
-      `You are the Lead Business Architect. Summarize these board notes into a 5-step execution plan: ${JSON.stringify(boardResponses)}`
+    // Synthesis
+    const architectRes = await model.generateContent(
+      `You are the Lead Business Architect. Create a master execution plan based on these director reports: ${JSON.stringify(boardResults)}`
     );
 
     return NextResponse.json({
-      architect: architectResult.response.text(),
-      board: boardResponses
+      architect: architectRes.response.text(),
+      board: boardResults
     });
 
-  } catch (error) {
-    return NextResponse.json({ error: "Board is offline" }, { status: 500 });
+  } catch (error: any) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
